@@ -1153,84 +1153,24 @@ function updateConfirmButton(confirmButton, selectedSeats, travellers) {
 
 // ─── AIRCRAFT STRUCTURE RENDERING ────────────────────────────────────────────────────────
 function drawFuselageSVG(layout) {
-    // Build the aircraft nose SVG
-    const noseContainer = document.querySelector('.aircraft-nose');
-    if (noseContainer) {
-        noseContainer.innerHTML = `
-            <div class="aircraft-nose-cone">
-                <svg viewBox="0 0 200 80" preserveAspectRatio="xMidYMax meet">
-                    <!-- Nose cone shape -->
-                    <path d="M 20 80 
-                             L 20 40 
-                             Q 20 20, 50 10 
-                             Q 100 0, 150 10 
-                             Q 180 20, 180 40 
-                             L 180 80" 
-                          fill="rgba(20, 28, 48, 0.98)" 
-                          stroke="rgba(212, 175, 55, 0.4)" 
-                          stroke-width="3"/>
-                    <!-- Cockpit windows -->
-                    <ellipse cx="70" cy="35" rx="12" ry="8" 
-                             fill="rgba(80, 120, 180, 0.3)" 
-                             stroke="rgba(100, 140, 200, 0.5)" 
-                             stroke-width="1.5"
-                             transform="rotate(-15, 70, 35)"/>
-                    <ellipse cx="130" cy="35" rx="12" ry="8" 
-                             fill="rgba(80, 120, 180, 0.3)" 
-                             stroke="rgba(100, 140, 200, 0.5)" 
-                             stroke-width="1.5"
-                             transform="rotate(15, 130, 35)"/>
-                    <!-- Center detail line -->
-                    <line x1="100" y1="15" x2="100" y2="50" 
-                          stroke="rgba(212, 175, 55, 0.2)" 
-                          stroke-width="1"/>
-                </svg>
-            </div>
-            <span class="aircraft-nose-label">Front of Aircraft</span>
-        `;
-    }
-
-    // Build the aircraft tail SVG
-    const tailContainer = document.querySelector('.aircraft-tail');
-    if (tailContainer) {
-        tailContainer.innerHTML = `
-            <div class="aircraft-tail-end">
-                <svg viewBox="0 0 200 50" preserveAspectRatio="xMidYMin meet">
-                    <!-- Tail end shape -->
-                    <path d="M 20 0 
-                             L 20 20 
-                             Q 20 40, 60 45 
-                             Q 100 50, 140 45 
-                             Q 180 40, 180 20 
-                             L 180 0" 
-                          fill="rgba(20, 28, 48, 0.98)" 
-                          stroke="rgba(212, 175, 55, 0.4)" 
-                          stroke-width="3"/>
-                </svg>
-            </div>
-            <span class="aircraft-tail-label">Rear of Aircraft</span>
-        `;
-    }
-
-    // Add window dots to the fuselage
+    // Zoomed-in cabin view - add windows and wing stubs
     requestAnimationFrame(() => {
         const wrap = document.querySelector('.aircraft-fuselage-wrap');
         if (!wrap) return;
 
-        // Remove existing window containers
-        wrap.querySelectorAll('.fuselage-windows').forEach(el => el.remove());
+        // Remove existing dynamic elements
+        wrap.querySelectorAll('.fuselage-windows, .wing-stub').forEach(el => el.remove());
 
         const cabin = wrap.querySelector('.aircraft-cabin-interior');
         if (!cabin) return;
 
         const H = cabin.offsetHeight;
-        const windowSpacing = 44;
-        const windowRows = Math.floor((H - 30) / windowSpacing);
+        const windowCount = Math.min(Math.floor((H - 80) / 46), 18);
 
         // Create left windows
         const leftWindows = document.createElement('div');
         leftWindows.className = 'fuselage-windows left';
-        for (let i = 0; i < windowRows; i++) {
+        for (let i = 0; i < windowCount; i++) {
             const dot = document.createElement('div');
             dot.className = 'window-dot';
             leftWindows.appendChild(dot);
@@ -1240,12 +1180,21 @@ function drawFuselageSVG(layout) {
         // Create right windows
         const rightWindows = document.createElement('div');
         rightWindows.className = 'fuselage-windows right';
-        for (let i = 0; i < windowRows; i++) {
+        for (let i = 0; i < windowCount; i++) {
             const dot = document.createElement('div');
             dot.className = 'window-dot';
             rightWindows.appendChild(dot);
         }
         wrap.appendChild(rightWindows);
+
+        // Add wing stubs (at exit row level)
+        const leftWing = document.createElement('div');
+        leftWing.className = 'wing-stub left';
+        wrap.appendChild(leftWing);
+
+        const rightWing = document.createElement('div');
+        rightWing.className = 'wing-stub right';
+        wrap.appendChild(rightWing);
     });
 }
 

@@ -808,98 +808,46 @@
     transform: translateZ(0);
 }
 
-/* Aircraft container with proper proportions */
+/* Aircraft container - zoomed in cabin view */
 .aircraft-container {
     position: relative;
     width: 100%;
-    max-width: 420px;
+    max-width: 380px;
     margin: 0 auto;
-    padding: 0 12px 20px;
+    padding: 20px 30px;
 }
 
-/* Aircraft nose cone - realistic pointed shape */
-.aircraft-nose {
-    position: relative;
-    width: 100%;
-    height: 80px;
-    margin-bottom: 0;
-}
-
-.aircraft-nose-cone {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 80%;
-    height: 100%;
-}
-
-.aircraft-nose-cone svg {
-    width: 100%;
-    height: 100%;
-}
-
-.aircraft-nose-label {
-    position: absolute;
-    bottom: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-/* Aircraft tail - rounded end */
+/* Hide nose and tail - zoomed in view */
+.aircraft-nose,
 .aircraft-tail {
-    position: relative;
-    width: 100%;
-    height: 50px;
-    margin-top: 0;
+    display: none;
 }
 
-.aircraft-tail-end {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 80%;
-    height: 100%;
-}
-
-.aircraft-tail-end svg {
-    width: 100%;
-    height: 100%;
-}
-
-.aircraft-tail-label {
-    position: absolute;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-/* Fuselage wrapper - the main cabin body */
+/* Fuselage wrapper - the main cabin body with rounded ends */
 .aircraft-fuselage-wrap {
     position: relative;
-    width: 80%;
+    width: 100%;
     margin: 0 auto;
     background: linear-gradient(180deg, 
-        rgba(20, 28, 48, 0.98) 0%, 
-        rgba(16, 22, 40, 0.98) 100%
+        rgba(18, 24, 42, 0.98) 0%, 
+        rgba(14, 20, 36, 0.98) 100%
     );
-    border-left: 3px solid rgba(212, 175, 55, 0.4);
-    border-right: 3px solid rgba(212, 175, 55, 0.4);
+    border-radius: 40px;
+    border: 2px solid rgba(80, 100, 140, 0.3);
     box-shadow: 
-        inset 4px 0 12px rgba(0, 0, 0, 0.4),
-        inset -4px 0 12px rgba(0, 0, 0, 0.4),
-        0 0 30px rgba(0, 0, 0, 0.5);
+        inset 0 0 30px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(0, 0, 0, 0.4),
+        0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Fuselage outer shell effect */
+.aircraft-fuselage-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 44px;
+    border: 1px solid rgba(60, 80, 120, 0.2);
+    pointer-events: none;
 }
 
 /* Hide the old SVG fuselage */
@@ -911,38 +859,114 @@
 .aircraft-cabin-interior {
     position: relative;
     z-index: 1;
-    padding: 16px 12px;
+    padding: 24px 16px 28px;
 }
 
 /* Window dots along the fuselage walls */
 .fuselage-windows {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 8px;
+    top: 50px;
+    bottom: 50px;
+    width: 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 20px 0;
-    gap: 38px;
-    z-index: 0;
+    justify-content: space-between;
+    padding: 10px 0;
+    z-index: 2;
 }
 
 .fuselage-windows.left {
-    left: -6px;
+    left: 4px;
 }
 
 .fuselage-windows.right {
-    right: -6px;
+    right: 4px;
 }
 
 .window-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(140, 190, 255, 0.25);
-    border: 1px solid rgba(140, 190, 255, 0.5);
-    box-shadow: 0 0 4px rgba(140, 190, 255, 0.3);
+    width: 8px;
+    height: 12px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, 
+        rgba(100, 140, 200, 0.15) 0%,
+        rgba(80, 120, 180, 0.25) 100%
+    );
+    border: 1px solid rgba(100, 140, 200, 0.4);
+    box-shadow: 
+        inset 0 0 4px rgba(140, 180, 220, 0.3),
+        0 0 6px rgba(100, 140, 200, 0.2);
+}
+
+/* Wing stubs at exit row level */
+.wing-stub {
+    position: absolute;
+    top: 38%;
+    height: 80px;
+    width: 28px;
+    z-index: 1;
+}
+
+.wing-stub.left {
+    left: -26px;
+    background: linear-gradient(90deg, 
+        rgba(40, 55, 85, 0.9) 0%,
+        rgba(50, 70, 100, 0.95) 60%,
+        rgba(18, 24, 42, 0.98) 100%
+    );
+    border-radius: 8px 0 0 12px;
+    border: 1px solid rgba(80, 100, 140, 0.3);
+    border-right: none;
+    box-shadow: 
+        -4px 2px 12px rgba(0, 0, 0, 0.4),
+        inset 2px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.wing-stub.right {
+    right: -26px;
+    background: linear-gradient(270deg, 
+        rgba(40, 55, 85, 0.9) 0%,
+        rgba(50, 70, 100, 0.95) 60%,
+        rgba(18, 24, 42, 0.98) 100%
+    );
+    border-radius: 0 8px 12px 0;
+    border: 1px solid rgba(80, 100, 140, 0.3);
+    border-left: none;
+    box-shadow: 
+        4px 2px 12px rgba(0, 0, 0, 0.4),
+        inset -2px 0 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Wing detail lines */
+.wing-stub::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 100%;
+    height: 2px;
+    background: rgba(80, 100, 140, 0.3);
+}
+
+.wing-stub::after {
+    content: 'EXIT';
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: rgba(212, 175, 55, 0.7);
+    white-space: nowrap;
+}
+
+.wing-stub.left::after {
+    left: 2px;
+}
+
+.wing-stub.right::after {
+    right: 2px;
+    transform: translateY(-50%) rotate(90deg);
 }
 
 /* Column headers */
@@ -1275,19 +1299,28 @@
 
     .aircraft-container {
         max-width: 100%;
-        padding: 0 8px 16px;
+        padding: 12px 20px;
     }
 
     .aircraft-fuselage-wrap {
-        width: 85%;
+        border-radius: 30px;
     }
 
-    .aircraft-nose {
+    .wing-stub {
+        width: 20px;
         height: 60px;
     }
 
-    .aircraft-tail {
-        height: 40px;
+    .wing-stub.left {
+        left: -18px;
+    }
+
+    .wing-stub.right {
+        right: -18px;
+    }
+
+    .wing-stub::after {
+        font-size: 6px;
     }
 
     .seat-btn {
@@ -1349,13 +1382,38 @@
     }
 
     .window-dot {
-        width: 4px;
-        height: 4px;
+        width: 5px;
+        height: 8px;
     }
 }
 
 /* Very small screens */
 @media (max-width: 400px) {
+    .aircraft-container {
+        padding: 10px 16px;
+    }
+
+    .aircraft-fuselage-wrap {
+        border-radius: 24px;
+    }
+
+    .wing-stub {
+        width: 16px;
+        height: 50px;
+    }
+
+    .wing-stub.left {
+        left: -14px;
+    }
+
+    .wing-stub.right {
+        right: -14px;
+    }
+
+    .wing-stub::after {
+        display: none;
+    }
+
     .seat-btn {
         height: 28px;
         font-size: 8px;
@@ -1378,16 +1436,13 @@
         font-size: 8px;
     }
 
-    .aircraft-nose {
-        height: 50px;
-    }
-
-    .aircraft-tail {
-        height: 35px;
-    }
-
     .seat-col-header {
         font-size: 9px;
+    }
+
+    .window-dot {
+        width: 4px;
+        height: 6px;
     }
 }
 
