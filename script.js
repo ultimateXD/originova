@@ -866,7 +866,8 @@ const seatSelectionState = {
     flight: null,
     travellers: 0,
     selectedSeats: [],
-    totalWithFees: 0
+    totalWithFees: 0,
+    mapBuilt: false
 };
 
 // Seat layout definitions per cabin class
@@ -978,6 +979,8 @@ function openSeatSelectionModal(flight, travellers) {
     seatSelectionState.travellers = travellers;
     seatSelectionState.selectedSeats = [];
     seatSelectionState.totalWithFees = flight.price;
+    // Flag: seat map DOM has not been built yet for this flight
+    seatSelectionState.mapBuilt = false;
 
     renderSeatSelectionModal();
 
@@ -993,118 +996,281 @@ function closeSeatSelectionModal() {
     modal.classList.remove('active');
     modal.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+
+    // Reset map so next flight gets a clean build
+    seatSelectionState.mapBuilt = false;
+    const grid = document.getElementById('seatMapGrid');
+    const headers = document.getElementById('seatColHeaders');
+    const svg = document.getElementById('aircraftFuselageSvg');
+    if (grid) grid.innerHTML = '';
+    if (headers) headers.innerHTML = '';
+    if (svg) svg.innerHTML = '';
 }
 
+// ─── MAIN RENDER ENTRY ────────────────────────────────────────────────────────
+// Called once on open (builds full DOM) and on seat toggle (partial update only)
 function renderSeatSelectionModal() {
-    const { flight, travellers, selectedSeats } = seatSelectionState;
+    const { flight, travellers, selectedSeats, mapBuilt } = seatSelectionState;
     if (!flight) return;
 
-    const seatMapGrid = document.getElementById('seatMapGrid');
-    const seatColHeaders = document.getElementById('seatColHeaders');
+    const seatMapGrid     = document.getElementById('seatMapGrid');
+    const seatColHeaders  = document.getElementById('seatColHeaders');
     const seatFlightSummary = document.getElementById('seatFlightSummary');
     const availabilityCount = document.getElementById('seatAvailabilityCount');
-    const neededCount = document.getElementById('seatNeededCount');
+    const neededCount     = document.getElementById('seatNeededCount');
     const selectedPreview = document.getElementById('selectedSeatsPreview');
-    const confirmButton = document.getElementById('confirmSeatReservation');
+    const confirmButton   = document.getElementById('confirmSeatReservation');
 
-    if (!seatMapGrid || !seatFlightSummary || !availabilityCount || !neededCount || !selectedPreview || !confirmButton) {
-        return;
-    }
+    if (!seatMapGrid || !seatFlightSummary || !availabilityCount || !neededCount || !selectedPreview || !confirmButton) return;
 
-    const layout = getSeatLayout(flight.cabinClassKey);
+    const layout   = getSeatLayout(flight.cabinClassKey);
     const freeSeats = countAvailableSeats(flight.seatMap);
     flight.freeSeats = freeSeats;
 
-    // --- Flight Summary ---
-    seatFlightSummary.innerHTML = `
-        <h4>${flight.airline} &middot; ${flight.flightNumber}</h4>
-        <p>${flight.from} &rarr; ${flight.to}</p>
-        <p>${formatDate(flight.departureDate)} &middot; ${flight.departureTime} &ndash; ${flight.arrivalTime}</p>
-        <p>${flight.cabinClass} &middot; ${flight.stops}</p>
-    `;
+    // ── Static info (only needs setting once) ──────────────────────────────────
+    if (!mapBuilt) {
+        seatFlightSummary.innerHTML = `
+            <h4>${flight.airline} &middot; ${flight.flightNumber}</h4>
+            <p>${flight.from} &rarr; ${flight.to}</p>
+            <p>${formatDate(flight.departureDate)} &middot; ${flight.departureTime} &ndash; ${flight.arrivalTime}</p>
+            <p>${flight.cabinClass} &middot; ${flight.stops}</p>
+        `;
 
-    availabilityCount.textContent = `${freeSeats} free`;
-    neededCount.textContent = `${travellers} ${travellers === 1 ? 'seat' : 'seats'}`;
+        availabilityCount.textContent = `${freeSeats} free`;
+        neededCount.textContent = `${travellers} ${travellers === 1 ? 'seat' : 'seats'}`;
 
-    // --- Legend prices ---
-    const legendPriceStd = document.getElementById('legendPriceStd');
-    const legendPricePremium = document.getElementById('legendPricePremium');
-    if (legendPriceStd) legendPriceStd.textContent = layout.seatFeeStd > 0 ? `+$${layout.seatFeeStd}` : 'Free';
-    if (legendPricePremium) legendPricePremium.textContent = `+$${layout.seatFeePremium}`;
+        const legendPriceStd     = document.getElementById('legendPriceStd');
+        const legendPricePremium = document.getElementById('legendPricePremium');
+        if (legendPriceStd)     legendPriceStd.textContent     = layout.seatFeeStd > 0 ? `+$${layout.seatFeeStd}` : 'Free';
+        if (legendPricePremium) legendPricePremium.textContent = `+$${layout.seatFeePremium}`;
 
-    // --- Selected Seats Preview ---
+        // Build seat map HTML once
+        buildSeatMapDOM(seatMapGrid, seatColHeaders, flight, layout);
+        drawFuselageSVG(layout);
+
+        // Attach ONE delegated click listener on the grid (not per-button)
+        seatMapGrid.addEventListener('click', (e) => {
+            const btn = e.target.closest('.seat-btn');
+            if (!btn || btn.disabled) return;
+            toggleSeatSelection(btn.dataset.seatId);
+        });
+
+        seatSelectionState.mapBuilt = true;
+    }
+
+    // ── Dynamic info (updated on every seat toggle) ────────────────────────────
+    updateSeatStateClasses(seatMapGrid, selectedSeats);
+    updateSelectedPreview(selectedPreview, selectedSeats);
+    updateBookingSummary(flight, travellers, selectedSeats, layout);
+    updateConfirmButton(confirmButton, selectedSeats, travellers);
+}
+
+// ─── BUILD FULL SEAT MAP DOM (called once) ─────────────────────────────────────
+function buildSeatMapDOM(seatMapGrid, seatColHeaders, flight, layout) {
+    const rows       = [...new Set(flight.seatMap.map(seat => seat.row))];
+    const allColumns = layout.groups.flat();
+
+    // Column headers
+    if (seatColHeaders) {
+        const headerCells = ['<div></div>'];
+        allColumns.forEach(col => {
+            const needsAisle = layout.groups.some((g, gi) => gi > 0 && g[0] === col);
+            if (needsAisle) headerCells.push('<div class="aisle-gap"></div>');
+            headerCells.push(`<div class="seat-col-header">${col}</div>`);
+        });
+        seatColHeaders.innerHTML = `<div class="seat-col-headers seat-row ${layout.cssLayout}">${headerCells.join('')}</div>`;
+    }
+
+    // Seat rows
+    const premiumRowNumbers = layout.premiumRows.map(offset => layout.startRow + offset);
+    let sectionLabelRendered  = false;
+    let premiumLabelRendered  = false;
+    const htmlParts = [];
+
+    rows.forEach(rowNum => {
+        const rowSeats = flight.seatMap.filter(seat => seat.row === rowNum);
+        let label = '';
+
+        if (!premiumLabelRendered && premiumRowNumbers.includes(rowNum)) {
+            premiumLabelRendered = true;
+            label = `<div class="seat-section-label"><span class="seat-section-label-text">Exit / Premium Rows</span></div>`;
+        } else if (!sectionLabelRendered && !premiumRowNumbers.includes(rowNum) && premiumLabelRendered) {
+            sectionLabelRendered = true;
+            label = `<div class="seat-section-label"><span class="seat-section-label-text">Standard Rows</span></div>`;
+        } else if (!sectionLabelRendered && rowNum === rows[0]) {
+            sectionLabelRendered = true;
+            const name = { economy: 'Economy Class', premium: 'Premium Economy', business: 'Business Class', first: 'First Class' }[flight.cabinClassKey] || 'Economy Class';
+            label = `<div class="seat-section-label"><span class="seat-section-label-text">${name}</span></div>`;
+        }
+
+        htmlParts.push(label + renderSeatRow(rowNum, rowSeats, layout));
+    });
+
+    seatMapGrid.innerHTML = htmlParts.join('');
+}
+
+// ─── PARTIAL UPDATE: only toggle CSS classes, never rebuild DOM ────────────────
+function updateSeatStateClasses(seatMapGrid, selectedSeats) {
+    const selectedSet = new Set(selectedSeats);
+    seatMapGrid.querySelectorAll('.seat-btn').forEach(btn => {
+        const id = btn.dataset.seatId;
+        const shouldBeSelected = selectedSet.has(id);
+        const isSelected = btn.classList.contains('selected');
+        if (shouldBeSelected !== isSelected) {
+            btn.classList.toggle('selected', shouldBeSelected);
+            btn.setAttribute('aria-pressed', String(shouldBeSelected));
+        }
+    });
+}
+
+function updateSelectedPreview(selectedPreview, selectedSeats) {
     if (!selectedSeats.length) {
         selectedPreview.textContent = 'No seats selected yet';
     } else {
         selectedPreview.innerHTML = selectedSeats
-            .map(seatId => `<span class="selected-seat-chip">${seatId}</span>`)
+            .map(id => `<span class="selected-seat-chip">${id}</span>`)
             .join('');
     }
+}
 
-    // --- Booking Summary ---
-    updateBookingSummary(flight, travellers, selectedSeats, layout);
-
-    // --- Confirm Button ---
-    confirmButton.disabled = selectedSeats.length !== travellers;
-    confirmButton.textContent = selectedSeats.length === travellers
-        ? `Reserve ${selectedSeats.length} Seat${selectedSeats.length > 1 ? 's' : ''} &rarr;`
-        : `Select ${travellers - selectedSeats.length} More Seat${travellers - selectedSeats.length === 1 ? '' : 's'}`;
-
-    // --- Build seat map ---
-    const rows = [...new Set(flight.seatMap.map(seat => seat.row))];
-    const allColumns = layout.groups.flat();
-
-    // Column header row
-    if (seatColHeaders) {
-        const headerCols = buildRowGridStyle(layout);
-        seatColHeaders.innerHTML = `
-            <div class="seat-col-headers seat-row ${layout.cssLayout}" style="margin-bottom:4px;">
-                <div></div>
-                ${allColumns.map((col, i) => {
-                    // Insert aisle gap markers
-                    const colHtml = `<div class="seat-col-header">${col}</div>`;
-                    // Check if we need an aisle gap before this column
-                    const needsAisleBefore = layout.groups.some((g, gi) => gi > 0 && g[0] === col);
-                    return needsAisleBefore
-                        ? `<div class="aisle-gap"></div>${colHtml}`
-                        : colHtml;
-                }).join('')}
-            </div>
-        `;
+function updateConfirmButton(confirmButton, selectedSeats, travellers) {
+    const ready = selectedSeats.length === travellers;
+    confirmButton.disabled = !ready;
+    if (ready) {
+        confirmButton.textContent = `Reserve ${selectedSeats.length} Seat${selectedSeats.length > 1 ? 's' : ''} \u2192`;
+    } else {
+        const remaining = travellers - selectedSeats.length;
+        confirmButton.textContent = `Select ${remaining} More Seat${remaining === 1 ? '' : 's'}`;
     }
+}
 
-    // Determine if we need to add a section label for premium rows
-    const premiumRowNumbers = layout.premiumRows.map(offset => layout.startRow + offset);
-    let sectionLabelRendered = false;
-    let premiumSectionLabelRendered = false;
+// ─── SVG FUSELAGE FRAME ────────────────────────────────────────────────────────
+function drawFuselageSVG(layout) {
+    const svg = document.getElementById('aircraftFuselageSvg');
+    if (!svg) return;
 
-    seatMapGrid.innerHTML = rows.map(rowNum => {
-        const rowSeats = flight.seatMap.filter(seat => seat.row === rowNum);
-        let labelHtml = '';
+    // Get the cabin interior size after it has been built
+    requestAnimationFrame(() => {
+        const wrap    = svg.closest('.aircraft-fuselage-wrap');
+        const cabin   = wrap ? wrap.querySelector('.aircraft-cabin-interior') : null;
+        if (!wrap || !cabin) return;
 
-        if (!premiumSectionLabelRendered && premiumRowNumbers.includes(rowNum)) {
-            premiumSectionLabelRendered = true;
-            labelHtml = `<div class="seat-section-label"><span class="seat-section-label-text">Exit / Premium Rows</span></div>`;
-        } else if (!sectionLabelRendered && !premiumRowNumbers.includes(rowNum) && premiumSectionLabelRendered) {
-            sectionLabelRendered = true;
-            labelHtml = `<div class="seat-section-label"><span class="seat-section-label-text">Standard Rows</span></div>`;
-        } else if (!sectionLabelRendered && rowNum === rows[0]) {
-            sectionLabelRendered = true;
-            const sectionName = { economy: 'Economy Class', premium: 'Premium Economy', business: 'Business Class', first: 'First Class' }[flight.cabinClassKey] || 'Economy Class';
-            labelHtml = `<div class="seat-section-label"><span class="seat-section-label-text">${sectionName}</span></div>`;
+        const W = wrap.offsetWidth;
+        const H = cabin.offsetHeight;
+        if (!W || !H) return;
+
+        // Fuselage wall inset from sides
+        const wallW   = 18;   // wall thickness
+        const radius  = 14;   // inner corner radius
+        const noseLen = 0;    // nose protrusion beyond the content box (handled by aircraft-nose text)
+        const tailLen = 0;
+
+        // Interior bounds (the seat-grid area including cabin padding)
+        const x0 = 0, y0 = 0, x1 = W, y1 = H;
+
+        // Left and right wall x positions
+        const lx = 6;
+        const rx = W - 6;
+
+        // Build the fuselage shape path:
+        // Two vertical bars (left wall, right wall) with slightly tapered top (nose) and bottom (tail)
+        // Left wall: a rounded rectangle strip on the left
+        // Right wall: mirrored on the right
+        // We draw as a compound path so the interior is transparent (seats show through)
+
+        const wallColor     = 'rgba(212,175,55,0.18)';
+        const strokeColor   = 'rgba(212,175,55,0.55)';
+        const strokeW       = 1.5;
+        const windowDotR    = 3.5;
+        const windowSpacing = 51;  // approx seat row pitch
+        const windowRows    = Math.floor((H - 40) / windowSpacing);
+        const windowStartY  = 28;
+
+        // Wing shape at mid-height (exit rows region — roughly 38% from top)
+        const wingY     = H * 0.38;
+        const wingSpan  = 28;   // how far the wing juts out past the wall
+        const wingDepth = 44;   // vertical span of the wing bulge
+
+        const svgNS = 'http://www.w3.org/2000/svg';
+
+        // Clear previous
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        svg.setAttribute('width', W);
+        svg.setAttribute('height', H);
+
+        // Helper to create SVG element
+        const el = (tag, attrs) => {
+            const e = document.createElementNS(svgNS, tag);
+            Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+            return e;
+        };
+
+        // ── Left fuselage wall ──────────────────────────────────────────────────
+        // Draws a vertical strip with a wing blister at exit-row level
+        const lWallPath = `
+            M ${lx + wallW} ${y0 + radius}
+            Q ${lx + wallW} ${y0} ${lx + wallW - radius} ${y0}
+            L ${lx} ${y0}
+            L ${lx} ${y1}
+            L ${lx + wallW} ${y1}
+            L ${lx + wallW} ${wingY + wingDepth / 2}
+            Q ${lx - wingSpan} ${wingY} ${lx + wallW} ${wingY - wingDepth / 2}
+            Z
+        `;
+        svg.appendChild(el('path', {
+            d: lWallPath,
+            fill: wallColor,
+            stroke: strokeColor,
+            'stroke-width': strokeW,
+            'stroke-linejoin': 'round'
+        }));
+
+        // ── Right fuselage wall ─────────────────────────────────────────────────
+        const rWallPath = `
+            M ${rx - wallW} ${y0 + radius}
+            Q ${rx - wallW} ${y0} ${rx - wallW + radius} ${y0}
+            L ${rx} ${y0}
+            L ${rx} ${y1}
+            L ${rx - wallW} ${y1}
+            L ${rx - wallW} ${wingY + wingDepth / 2}
+            Q ${rx + wingSpan} ${wingY} ${rx - wallW} ${wingY - wingDepth / 2}
+            Z
+        `;
+        svg.appendChild(el('path', {
+            d: rWallPath,
+            fill: wallColor,
+            stroke: strokeColor,
+            'stroke-width': strokeW,
+            'stroke-linejoin': 'round'
+        }));
+
+        // ── Window dots on each wall ────────────────────────────────────────────
+        for (let i = 0; i < windowRows; i++) {
+            const wy = windowStartY + i * windowSpacing;
+            // Left window
+            const lwc = el('circle', { cx: lx + wallW * 0.52, cy: wy, r: windowDotR, fill: 'rgba(140,190,255,0.35)', stroke: 'rgba(140,190,255,0.7)', 'stroke-width': 0.8 });
+            svg.appendChild(lwc);
+            // Right window
+            const rwc = el('circle', { cx: rx - wallW * 0.52, cy: wy, r: windowDotR, fill: 'rgba(140,190,255,0.35)', stroke: 'rgba(140,190,255,0.7)', 'stroke-width': 0.8 });
+            svg.appendChild(rwc);
         }
 
-        return `${labelHtml}${renderSeatRow(rowNum, rowSeats, layout)}`;
-    }).join('');
+        // ── Wing label (EXIT) ───────────────────────────────────────────────────
+        const wingLabelAttrs = { 'font-size': '7', 'font-weight': '700', 'letter-spacing': '1', fill: 'rgba(212,175,55,0.9)', 'text-anchor': 'middle', 'font-family': 'Poppins, sans-serif' };
 
-    // Re-attach click listeners
-    seatMapGrid.querySelectorAll('.seat-btn:not([disabled])').forEach(button => {
-        button.addEventListener('click', () => toggleSeatSelection(button.dataset.seatId));
+        const lWingTxt = el('text', { ...wingLabelAttrs, x: lx + wallW * 0.5, y: wingY + 3, transform: `rotate(-90, ${lx + wallW * 0.5}, ${wingY})` });
+        lWingTxt.textContent = 'EXIT';
+        svg.appendChild(lWingTxt);
+
+        const rWingTxt = el('text', { ...wingLabelAttrs, x: rx - wallW * 0.5, y: wingY + 3, transform: `rotate(90, ${rx - wallW * 0.5}, ${wingY})` });
+        rWingTxt.textContent = 'EXIT';
+        svg.appendChild(rWingTxt);
     });
 }
 
 function buildRowGridStyle(layout) {
-    // Not needed for CSS grid, handled via layout class
     return '';
 }
 
@@ -1174,18 +1340,12 @@ function updateBookingSummary(flight, travellers, selectedSeats, layout) {
 function renderSeatButton(seat) {
     const isSelected = seatSelectionState.selectedSeats.includes(seat.id);
     const isOccupied = seat.status === 'occupied';
-    // Build class list — include type class for styling (window-left, window-right, aisle, middle, premium)
     const classes = [
         'seat-btn',
-        seat.status,   // 'available' or 'occupied'
-        seat.type,     // 'premium', 'window-left', 'window-right', 'aisle', 'middle'
+        seat.status,
+        seat.type,
         isSelected ? 'selected' : ''
     ].filter(Boolean).join(' ');
-
-    const layout = getSeatLayout(seatSelectionState.flight?.cabinClassKey || 'economy');
-    const feeLabel = seat.type === 'premium' && layout.seatFeePremium > 0
-        ? ` +$${layout.seatFeePremium}`
-        : (layout.seatFeeStd > 0 && !isOccupied ? ` +$${layout.seatFeeStd}` : '');
 
     return `<button
         type="button"

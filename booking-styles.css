@@ -802,19 +802,21 @@
     border-radius: 22px;
     border: 1px solid rgba(255, 255, 255, 0.07);
     background: rgba(255, 255, 255, 0.025);
-    padding: 24px 20px;
+    padding: 20px 20px 20px;
     overflow-x: auto;
+    /* GPU-accelerated layer for smooth scroll */
+    transform: translateZ(0);
 }
 
 /* Aircraft nose / tail indicators */
 .aircraft-nose,
 .aircraft-tail {
     text-align: center;
-    font-size: 12px;
-    letter-spacing: 2px;
+    font-size: 11px;
+    letter-spacing: 2.5px;
     text-transform: uppercase;
     color: var(--text-muted);
-    font-weight: 600;
+    font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -822,25 +824,11 @@
 }
 
 .aircraft-nose {
-    margin-bottom: 18px;
+    margin-bottom: 10px;
 }
 
 .aircraft-nose::before,
-.aircraft-nose::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.07));
-}
-
-.aircraft-nose::before {
-    background: linear-gradient(to left, transparent, rgba(255, 255, 255, 0.07));
-}
-
-.aircraft-tail {
-    margin-top: 18px;
-}
-
+.aircraft-nose::after,
 .aircraft-tail::before,
 .aircraft-tail::after {
     content: '';
@@ -849,8 +837,37 @@
     background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.07));
 }
 
+.aircraft-nose::before,
 .aircraft-tail::before {
     background: linear-gradient(to left, transparent, rgba(255, 255, 255, 0.07));
+}
+
+.aircraft-tail {
+    margin-top: 10px;
+}
+
+/* Fuselage wrapper — positions the SVG shell and content on top of each other */
+.aircraft-fuselage-wrap {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+/* The SVG fuselage outline — sits behind the content, sized to fill the wrap */
+.aircraft-fuselage-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+}
+
+/* The actual seat grid content — needs padding to clear the fuselage walls */
+.aircraft-cabin-interior {
+    position: relative;
+    z-index: 1;
+    padding: 16px 20px 16px;
 }
 
 /* Column headers */
