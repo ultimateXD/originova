@@ -221,16 +221,17 @@
 
                 <!-- Map Stage -->
                 <div class="seat-map-stage">
-                    <div class="aircraft-nose">Front of Aircraft</div>
-                    <div class="aircraft-fuselage-wrap">
-                        <!-- SVG fuselage shell is injected by JS into .aircraft-fuselage-svg -->
-                        <svg class="aircraft-fuselage-svg" aria-hidden="true" id="aircraftFuselageSvg"></svg>
-                        <div class="aircraft-cabin-interior">
-                            <div id="seatColHeaders"></div>
-                            <div id="seatMapGrid" class="seat-map-grid"></div>
+                    <div class="aircraft-container">
+                        <div class="aircraft-nose"></div>
+                        <div class="aircraft-fuselage-wrap">
+                            <svg class="aircraft-fuselage-svg" aria-hidden="true" id="aircraftFuselageSvg"></svg>
+                            <div class="aircraft-cabin-interior">
+                                <div id="seatColHeaders"></div>
+                                <div id="seatMapGrid" class="seat-map-grid"></div>
+                            </div>
                         </div>
+                        <div class="aircraft-tail"></div>
                     </div>
-                    <div class="aircraft-tail">Rear Cabin</div>
                 </div>
             </div>
         </div>

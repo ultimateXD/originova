@@ -876,48 +876,48 @@ const seatSelectionState = {
 // premiumRows: exit/premium rows (row offsets from startRow, 0-indexed)
 function getSeatLayout(cabinClass) {
     const layouts = {
-        // A330-200 style: 2-4-2
-        economy: {
-            startRow: 10,
-            rows: 20,
-            groups: [['A', 'B'], ['C', 'D', 'E', 'F'], ['G', 'H']],
-            premiumRows: [4, 5],      // exit rows (0-indexed offsets)
-            cssLayout: 'layout-2-4-2',
-            seatFeeStd: 0,
-            seatFeePremium: 25
-        },
-        // Premium economy: 2-4-2 fewer rows
-        premium: {
-            startRow: 6,
-            rows: 10,
-            groups: [['A', 'B'], ['C', 'D', 'E', 'F'], ['G', 'H']],
-            premiumRows: [0, 1],
-            cssLayout: 'layout-2-4-2',
-            seatFeeStd: 15,
-            seatFeePremium: 40
-        },
-        // Business: 2-2
-        business: {
-            startRow: 2,
-            rows: 8,
-            groups: [['A', 'C'], ['D', 'F']],
-            premiumRows: [0],
-            cssLayout: 'layout-2-2',
-            seatFeeStd: 0,
-            seatFeePremium: 75
-        },
-        // First: 1-2-1
-        first: {
-            startRow: 1,
-            rows: 4,
-            groups: [['A'], ['C', 'D'], ['F']],
-            premiumRows: [],
-            cssLayout: 'layout-1-2-1',
-            seatFeeStd: 0,
-            seatFeePremium: 0
-        }
+    // Boeing 737/757 style: 3-3 (A-B-C | D-E-F) - most realistic
+    economy: {
+    startRow: 15,
+    rows: 20,
+    groups: [['A', 'B', 'C'], ['D', 'E', 'F']],
+    premiumRows: [5, 6, 7],      // exit rows (0-indexed offsets from startRow)
+    cssLayout: 'layout-3-3',
+    seatFeeStd: 0,
+    seatFeePremium: 25
+    },
+    // Premium economy: 3-3 fewer rows
+    premium: {
+    startRow: 8,
+    rows: 12,
+    groups: [['A', 'B', 'C'], ['D', 'E', 'F']],
+    premiumRows: [0, 1],
+    cssLayout: 'layout-3-3',
+    seatFeeStd: 15,
+    seatFeePremium: 40
+    },
+    // Business: 2-2
+    business: {
+    startRow: 2,
+    rows: 8,
+    groups: [['A', 'C'], ['D', 'F']],
+    premiumRows: [0],
+    cssLayout: 'layout-2-2',
+    seatFeeStd: 0,
+    seatFeePremium: 75
+    },
+    // First: 1-2-1
+    first: {
+    startRow: 1,
+    rows: 4,
+    groups: [['A'], ['C', 'D'], ['F']],
+    premiumRows: [],
+    cssLayout: 'layout-1-2-1',
+    seatFeeStd: 0,
+    seatFeePremium: 0
+    }
     };
-
+  
     return layouts[cabinClass] || layouts.economy;
 }
 
@@ -1070,9 +1070,9 @@ function buildSeatMapDOM(seatMapGrid, seatColHeaders, flight, layout) {
     const rows       = [...new Set(flight.seatMap.map(seat => seat.row))];
     const allColumns = layout.groups.flat();
 
-    // Column headers
+    // Column headers with proper spacing
     if (seatColHeaders) {
-        const headerCells = ['<div></div>'];
+        const headerCells = ['<div class="row-label"></div>'];
         allColumns.forEach(col => {
             const needsAisle = layout.groups.some((g, gi) => gi > 0 && g[0] === col);
             if (needsAisle) headerCells.push('<div class="aisle-gap"></div>');
@@ -1084,23 +1084,30 @@ function buildSeatMapDOM(seatMapGrid, seatColHeaders, flight, layout) {
     // Seat rows
     const premiumRowNumbers = layout.premiumRows.map(offset => layout.startRow + offset);
     let sectionLabelRendered  = false;
-    let premiumLabelRendered  = false;
+    let exitLabelRendered  = false;
+    let postExitLabelRendered = false;
     const htmlParts = [];
 
     rows.forEach(rowNum => {
         const rowSeats = flight.seatMap.filter(seat => seat.row === rowNum);
         let label = '';
+        const isPremiumRow = premiumRowNumbers.includes(rowNum);
 
-        if (!premiumLabelRendered && premiumRowNumbers.includes(rowNum)) {
-            premiumLabelRendered = true;
-            label = `<div class="seat-section-label"><span class="seat-section-label-text">Exit / Premium Rows</span></div>`;
-        } else if (!sectionLabelRendered && !premiumRowNumbers.includes(rowNum) && premiumLabelRendered) {
-            sectionLabelRendered = true;
-            label = `<div class="seat-section-label"><span class="seat-section-label-text">Standard Rows</span></div>`;
-        } else if (!sectionLabelRendered && rowNum === rows[0]) {
+        // First row - show cabin class
+        if (!sectionLabelRendered && rowNum === rows[0]) {
             sectionLabelRendered = true;
             const name = { economy: 'Economy Class', premium: 'Premium Economy', business: 'Business Class', first: 'First Class' }[flight.cabinClassKey] || 'Economy Class';
             label = `<div class="seat-section-label"><span class="seat-section-label-text">${name}</span></div>`;
+        }
+        // Exit row section
+        else if (!exitLabelRendered && isPremiumRow) {
+            exitLabelRendered = true;
+            label = `<div class="seat-section-label"><span class="seat-section-label-text">Emergency Exit</span></div>`;
+        }
+        // After exit rows - standard rows
+        else if (!postExitLabelRendered && !isPremiumRow && exitLabelRendered) {
+            postExitLabelRendered = true;
+            label = `<div class="seat-section-label"><span class="seat-section-label-text">Standard Rows</span></div>`;
         }
 
         htmlParts.push(label + renderSeatRow(rowNum, rowSeats, layout));
@@ -1144,129 +1151,101 @@ function updateConfirmButton(confirmButton, selectedSeats, travellers) {
     }
 }
 
-// ─── SVG FUSELAGE FRAME ────────────────────────────────────────────────────────
+// ─── AIRCRAFT STRUCTURE RENDERING ────────────────────────────────────────────────────────
 function drawFuselageSVG(layout) {
-    const svg = document.getElementById('aircraftFuselageSvg');
-    if (!svg) return;
+    // Build the aircraft nose SVG
+    const noseContainer = document.querySelector('.aircraft-nose');
+    if (noseContainer) {
+        noseContainer.innerHTML = `
+            <div class="aircraft-nose-cone">
+                <svg viewBox="0 0 200 80" preserveAspectRatio="xMidYMax meet">
+                    <!-- Nose cone shape -->
+                    <path d="M 20 80 
+                             L 20 40 
+                             Q 20 20, 50 10 
+                             Q 100 0, 150 10 
+                             Q 180 20, 180 40 
+                             L 180 80" 
+                          fill="rgba(20, 28, 48, 0.98)" 
+                          stroke="rgba(212, 175, 55, 0.4)" 
+                          stroke-width="3"/>
+                    <!-- Cockpit windows -->
+                    <ellipse cx="70" cy="35" rx="12" ry="8" 
+                             fill="rgba(80, 120, 180, 0.3)" 
+                             stroke="rgba(100, 140, 200, 0.5)" 
+                             stroke-width="1.5"
+                             transform="rotate(-15, 70, 35)"/>
+                    <ellipse cx="130" cy="35" rx="12" ry="8" 
+                             fill="rgba(80, 120, 180, 0.3)" 
+                             stroke="rgba(100, 140, 200, 0.5)" 
+                             stroke-width="1.5"
+                             transform="rotate(15, 130, 35)"/>
+                    <!-- Center detail line -->
+                    <line x1="100" y1="15" x2="100" y2="50" 
+                          stroke="rgba(212, 175, 55, 0.2)" 
+                          stroke-width="1"/>
+                </svg>
+            </div>
+            <span class="aircraft-nose-label">Front of Aircraft</span>
+        `;
+    }
 
-    // Get the cabin interior size after it has been built
+    // Build the aircraft tail SVG
+    const tailContainer = document.querySelector('.aircraft-tail');
+    if (tailContainer) {
+        tailContainer.innerHTML = `
+            <div class="aircraft-tail-end">
+                <svg viewBox="0 0 200 50" preserveAspectRatio="xMidYMin meet">
+                    <!-- Tail end shape -->
+                    <path d="M 20 0 
+                             L 20 20 
+                             Q 20 40, 60 45 
+                             Q 100 50, 140 45 
+                             Q 180 40, 180 20 
+                             L 180 0" 
+                          fill="rgba(20, 28, 48, 0.98)" 
+                          stroke="rgba(212, 175, 55, 0.4)" 
+                          stroke-width="3"/>
+                </svg>
+            </div>
+            <span class="aircraft-tail-label">Rear of Aircraft</span>
+        `;
+    }
+
+    // Add window dots to the fuselage
     requestAnimationFrame(() => {
-        const wrap    = svg.closest('.aircraft-fuselage-wrap');
-        const cabin   = wrap ? wrap.querySelector('.aircraft-cabin-interior') : null;
-        if (!wrap || !cabin) return;
+        const wrap = document.querySelector('.aircraft-fuselage-wrap');
+        if (!wrap) return;
 
-        const W = wrap.offsetWidth;
+        // Remove existing window containers
+        wrap.querySelectorAll('.fuselage-windows').forEach(el => el.remove());
+
+        const cabin = wrap.querySelector('.aircraft-cabin-interior');
+        if (!cabin) return;
+
         const H = cabin.offsetHeight;
-        if (!W || !H) return;
+        const windowSpacing = 44;
+        const windowRows = Math.floor((H - 30) / windowSpacing);
 
-        // Fuselage wall inset from sides
-        const wallW   = 18;   // wall thickness
-        const radius  = 14;   // inner corner radius
-        const noseLen = 0;    // nose protrusion beyond the content box (handled by aircraft-nose text)
-        const tailLen = 0;
-
-        // Interior bounds (the seat-grid area including cabin padding)
-        const x0 = 0, y0 = 0, x1 = W, y1 = H;
-
-        // Left and right wall x positions
-        const lx = 6;
-        const rx = W - 6;
-
-        // Build the fuselage shape path:
-        // Two vertical bars (left wall, right wall) with slightly tapered top (nose) and bottom (tail)
-        // Left wall: a rounded rectangle strip on the left
-        // Right wall: mirrored on the right
-        // We draw as a compound path so the interior is transparent (seats show through)
-
-        const wallColor     = 'rgba(212,175,55,0.18)';
-        const strokeColor   = 'rgba(212,175,55,0.55)';
-        const strokeW       = 1.5;
-        const windowDotR    = 3.5;
-        const windowSpacing = 51;  // approx seat row pitch
-        const windowRows    = Math.floor((H - 40) / windowSpacing);
-        const windowStartY  = 28;
-
-        // Wing shape at mid-height (exit rows region — roughly 38% from top)
-        const wingY     = H * 0.38;
-        const wingSpan  = 28;   // how far the wing juts out past the wall
-        const wingDepth = 44;   // vertical span of the wing bulge
-
-        const svgNS = 'http://www.w3.org/2000/svg';
-
-        // Clear previous
-        while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-        svg.setAttribute('width', W);
-        svg.setAttribute('height', H);
-
-        // Helper to create SVG element
-        const el = (tag, attrs) => {
-            const e = document.createElementNS(svgNS, tag);
-            Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
-            return e;
-        };
-
-        // ── Left fuselage wall ──────────────────────────────────────────────────
-        // Draws a vertical strip with a wing blister at exit-row level
-        const lWallPath = `
-            M ${lx + wallW} ${y0 + radius}
-            Q ${lx + wallW} ${y0} ${lx + wallW - radius} ${y0}
-            L ${lx} ${y0}
-            L ${lx} ${y1}
-            L ${lx + wallW} ${y1}
-            L ${lx + wallW} ${wingY + wingDepth / 2}
-            Q ${lx - wingSpan} ${wingY} ${lx + wallW} ${wingY - wingDepth / 2}
-            Z
-        `;
-        svg.appendChild(el('path', {
-            d: lWallPath,
-            fill: wallColor,
-            stroke: strokeColor,
-            'stroke-width': strokeW,
-            'stroke-linejoin': 'round'
-        }));
-
-        // ── Right fuselage wall ─────────────────────────────────────────────────
-        const rWallPath = `
-            M ${rx - wallW} ${y0 + radius}
-            Q ${rx - wallW} ${y0} ${rx - wallW + radius} ${y0}
-            L ${rx} ${y0}
-            L ${rx} ${y1}
-            L ${rx - wallW} ${y1}
-            L ${rx - wallW} ${wingY + wingDepth / 2}
-            Q ${rx + wingSpan} ${wingY} ${rx - wallW} ${wingY - wingDepth / 2}
-            Z
-        `;
-        svg.appendChild(el('path', {
-            d: rWallPath,
-            fill: wallColor,
-            stroke: strokeColor,
-            'stroke-width': strokeW,
-            'stroke-linejoin': 'round'
-        }));
-
-        // ── Window dots on each wall ────────────────────────────────────────────
+        // Create left windows
+        const leftWindows = document.createElement('div');
+        leftWindows.className = 'fuselage-windows left';
         for (let i = 0; i < windowRows; i++) {
-            const wy = windowStartY + i * windowSpacing;
-            // Left window
-            const lwc = el('circle', { cx: lx + wallW * 0.52, cy: wy, r: windowDotR, fill: 'rgba(140,190,255,0.35)', stroke: 'rgba(140,190,255,0.7)', 'stroke-width': 0.8 });
-            svg.appendChild(lwc);
-            // Right window
-            const rwc = el('circle', { cx: rx - wallW * 0.52, cy: wy, r: windowDotR, fill: 'rgba(140,190,255,0.35)', stroke: 'rgba(140,190,255,0.7)', 'stroke-width': 0.8 });
-            svg.appendChild(rwc);
+            const dot = document.createElement('div');
+            dot.className = 'window-dot';
+            leftWindows.appendChild(dot);
         }
+        wrap.appendChild(leftWindows);
 
-        // ── Wing label (EXIT) ───────────────────────────────────────────────────
-        const wingLabelAttrs = { 'font-size': '7', 'font-weight': '700', 'letter-spacing': '1', fill: 'rgba(212,175,55,0.9)', 'text-anchor': 'middle', 'font-family': 'Poppins, sans-serif' };
-
-        const lWingTxt = el('text', { ...wingLabelAttrs, x: lx + wallW * 0.5, y: wingY + 3, transform: `rotate(-90, ${lx + wallW * 0.5}, ${wingY})` });
-        lWingTxt.textContent = 'EXIT';
-        svg.appendChild(lWingTxt);
-
-        const rWingTxt = el('text', { ...wingLabelAttrs, x: rx - wallW * 0.5, y: wingY + 3, transform: `rotate(90, ${rx - wallW * 0.5}, ${wingY})` });
-        rWingTxt.textContent = 'EXIT';
-        svg.appendChild(rWingTxt);
+        // Create right windows
+        const rightWindows = document.createElement('div');
+        rightWindows.className = 'fuselage-windows right';
+        for (let i = 0; i < windowRows; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'window-dot';
+            rightWindows.appendChild(dot);
+        }
+        wrap.appendChild(rightWindows);
     });
 }
 
@@ -1277,28 +1256,35 @@ function buildRowGridStyle(layout) {
 function renderSeatRow(rowNum, rowSeats, layout) {
     const seatsByCol = {};
     rowSeats.forEach(s => { seatsByCol[s.column] = s; });
-
+  
     const allColumns = layout.groups.flat();
     const cells = [];
-
+    
+    // Check if this is an exit/premium row
+    const premiumRowNumbers = layout.premiumRows.map(offset => layout.startRow + offset);
+    const isExitRow = premiumRowNumbers.includes(rowNum);
+  
     // row label
     cells.push(`<div class="row-label">${rowNum}</div>`);
-
+  
     allColumns.forEach((col, i) => {
-        const needsAisleBefore = layout.groups.some((g, gi) => gi > 0 && g[0] === col);
-        if (needsAisleBefore) {
-            cells.push(`<div class="aisle-gap"><div class="aisle-gap-inner"></div></div>`);
-        }
-
-        const seat = seatsByCol[col];
-        if (seat) {
-            cells.push(renderSeatButton(seat));
-        } else {
-            cells.push(`<div></div>`);
-        }
+    const needsAisleBefore = layout.groups.some((g, gi) => gi > 0 && g[0] === col);
+    if (needsAisleBefore) {
+    cells.push(`<div class="aisle-gap"><div class="aisle-gap-inner"></div></div>`);
+    }
+  
+    const seat = seatsByCol[col];
+    if (seat) {
+    cells.push(renderSeatButton(seat));
+    } else {
+    cells.push(`<div></div>`);
+    }
     });
-
-    return `<div class="seat-row ${layout.cssLayout}" role="row">${cells.join('')}</div>`;
+    
+    // Add exit-row-indicator class for premium rows
+    const exitClass = isExitRow ? ' exit-row-indicator' : '';
+  
+    return `<div class="seat-row ${layout.cssLayout}${exitClass}" role="row">${cells.join('')}</div>`;
 }
 
 function updateBookingSummary(flight, travellers, selectedSeats, layout) {
@@ -1341,20 +1327,23 @@ function renderSeatButton(seat) {
     const isSelected = seatSelectionState.selectedSeats.includes(seat.id);
     const isOccupied = seat.status === 'occupied';
     const classes = [
-        'seat-btn',
-        seat.status,
-        seat.type,
-        isSelected ? 'selected' : ''
+    'seat-btn',
+    seat.status,
+    seat.type,
+    isSelected ? 'selected' : ''
     ].filter(Boolean).join(' ');
-
+    
+    // Show only the column letter in the seat (cleaner look)
+    const displayLabel = seat.column;
+  
     return `<button
-        type="button"
-        class="${classes}"
-        data-seat-id="${seat.id}"
-        aria-label="Seat ${seat.id}${isOccupied ? ', reserved' : ''}${isSelected ? ', selected' : ''}"
-        aria-pressed="${isSelected}"
-        ${isOccupied ? 'disabled aria-disabled="true"' : ''}
-    >${seat.id}</button>`;
+    type="button"
+    class="${classes}"
+    data-seat-id="${seat.id}"
+    aria-label="Seat ${seat.id}${isOccupied ? ', reserved' : ''}${isSelected ? ', selected' : ''}"
+    aria-pressed="${isSelected}"
+    ${isOccupied ? 'disabled aria-disabled="true"' : ''}
+    >${displayLabel}</button>`;
 }
 
 function toggleSeatSelection(seatId) {
