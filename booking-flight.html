@@ -135,37 +135,83 @@
         <div class="seat-selection-overlay" data-close-seat-modal></div>
         <div class="seat-selection-dialog" role="dialog" aria-modal="true" aria-labelledby="seatSelectionTitle">
             <button type="button" class="seat-modal-close" id="closeSeatSelection" aria-label="Close seat selection">&times;</button>
+
             <div class="seat-selection-header">
                 <div>
-                    <span class="seat-selection-kicker">Seat reservation</span>
-                    <h3 id="seatSelectionTitle">Choose your seats</h3>
-                    <p id="seatSelectionSubtitle">Select your preferred seats before continuing to payment.</p>
+                    <span class="seat-selection-kicker">Seat Reservation</span>
+                    <h3 id="seatSelectionTitle">Choose Your Seats</h3>
+                    <p id="seatSelectionSubtitle">Select your preferred seats on the aircraft map below.</p>
                 </div>
                 <div class="seat-selection-stats">
                     <div class="seat-stat-card">
-                        <span class="seat-stat-label">Seats left</span>
+                        <span class="seat-stat-label">Available</span>
                         <strong id="seatAvailabilityCount">0 free</strong>
                     </div>
                     <div class="seat-stat-card">
-                        <span class="seat-stat-label">Needed</span>
+                        <span class="seat-stat-label">To select</span>
                         <strong id="seatNeededCount">0 seats</strong>
                     </div>
                 </div>
             </div>
 
             <div class="seat-selection-layout">
+                <!-- Sidebar -->
                 <aside class="seat-selection-sidebar">
                     <div class="seat-flight-summary" id="seatFlightSummary"></div>
 
                     <div class="seat-legend">
-                        <div class="legend-item"><span class="seat-sample available"></span> Available</div>
-                        <div class="legend-item"><span class="seat-sample selected"></span> Selected</div>
-                        <div class="legend-item"><span class="seat-sample occupied"></span> Reserved</div>
+                        <div class="legend-title">Legend</div>
+                        <div class="legend-item">
+                            <div class="legend-left">
+                                <span class="seat-sample available"></span>
+                                Available
+                            </div>
+                            <span class="legend-price" id="legendPriceStd"></span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-left">
+                                <span class="seat-sample premium"></span>
+                                Premium (Exit row)
+                            </div>
+                            <span class="legend-price" id="legendPricePremium"></span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-left">
+                                <span class="seat-sample selected"></span>
+                                Selected
+                            </div>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-left">
+                                <span class="seat-sample occupied"></span>
+                                Reserved
+                            </div>
+                        </div>
                     </div>
 
                     <div class="seat-selected-box">
-                        <span class="selected-box-label">Selected seats</span>
+                        <span class="selected-box-label">Your seats</span>
                         <div id="selectedSeatsPreview" class="selected-seats-preview">No seats selected yet</div>
+                    </div>
+
+                    <!-- Booking Summary -->
+                    <div class="seat-booking-summary" id="seatBookingSummary">
+                        <div class="summary-title">Booking Summary</div>
+                        <div id="summaryLines">
+                            <div class="summary-line">
+                                <span class="summary-line-label">Base fare</span>
+                                <span class="summary-line-value" id="summaryBaseFare">—</span>
+                            </div>
+                            <div class="summary-line" id="summarySeatFeeRow" style="display:none;">
+                                <span class="summary-line-label">Seat fees</span>
+                                <span class="summary-line-value" id="summarySeatFee">—</span>
+                            </div>
+                        </div>
+                        <div class="summary-divider"></div>
+                        <div class="summary-total-line">
+                            <span class="summary-total-label">Total</span>
+                            <span class="summary-total-value" id="summaryTotal">—</span>
+                        </div>
                     </div>
 
                     <button type="button" id="confirmSeatReservation" class="btn-primary btn-large seat-confirm-btn" disabled>
@@ -173,10 +219,12 @@
                     </button>
                 </aside>
 
+                <!-- Map Stage -->
                 <div class="seat-map-stage">
-                    <div class="aircraft-nose">Front of aircraft</div>
+                    <div class="aircraft-nose">Front of Aircraft</div>
+                    <div id="seatColHeaders"></div>
                     <div id="seatMapGrid" class="seat-map-grid"></div>
-                    <div class="aircraft-tail">Rear cabin</div>
+                    <div class="aircraft-tail">Rear Cabin</div>
                 </div>
             </div>
         </div>

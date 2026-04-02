@@ -865,15 +865,56 @@ function formatCabinClass(cabin) {
 const seatSelectionState = {
     flight: null,
     travellers: 0,
-    selectedSeats: []
+    selectedSeats: [],
+    totalWithFees: 0
 };
 
+// Seat layout definitions per cabin class
+// layout: defines the physical column groups separated by aisles
+// Each entry in `groups` is an array of column letters for that block
+// premiumRows: exit/premium rows (row offsets from startRow, 0-indexed)
 function getSeatLayout(cabinClass) {
     const layouts = {
-        economy: { startRow: 8, rows: 18, columns: ['A', 'B', 'C', 'D', 'E', 'F'], splitIndex: 3 },
-        premium: { startRow: 5, rows: 10, columns: ['A', 'B', 'C', 'D', 'E', 'F'], splitIndex: 3 },
-        business: { startRow: 3, rows: 8, columns: ['A', 'B', 'C', 'D'], splitIndex: 2 },
-        first: { startRow: 1, rows: 5, columns: ['A', 'B', 'C', 'D'], splitIndex: 2 }
+        // A330-200 style: 2-4-2
+        economy: {
+            startRow: 10,
+            rows: 20,
+            groups: [['A', 'B'], ['C', 'D', 'E', 'F'], ['G', 'H']],
+            premiumRows: [4, 5],      // exit rows (0-indexed offsets)
+            cssLayout: 'layout-2-4-2',
+            seatFeeStd: 0,
+            seatFeePremium: 25
+        },
+        // Premium economy: 2-4-2 fewer rows
+        premium: {
+            startRow: 6,
+            rows: 10,
+            groups: [['A', 'B'], ['C', 'D', 'E', 'F'], ['G', 'H']],
+            premiumRows: [0, 1],
+            cssLayout: 'layout-2-4-2',
+            seatFeeStd: 15,
+            seatFeePremium: 40
+        },
+        // Business: 2-2
+        business: {
+            startRow: 2,
+            rows: 8,
+            groups: [['A', 'C'], ['D', 'F']],
+            premiumRows: [0],
+            cssLayout: 'layout-2-2',
+            seatFeeStd: 0,
+            seatFeePremium: 75
+        },
+        // First: 1-2-1
+        first: {
+            startRow: 1,
+            rows: 4,
+            groups: [['A'], ['C', 'D'], ['F']],
+            premiumRows: [],
+            cssLayout: 'layout-1-2-1',
+            seatFeeStd: 0,
+            seatFeePremium: 0
+        }
     };
 
     return layouts[cabinClass] || layouts.economy;
@@ -881,21 +922,31 @@ function getSeatLayout(cabinClass) {
 
 function createSeatMap(cabinClass, travellers) {
     const layout = getSeatLayout(cabinClass);
-    const minAvailable = Math.max(travellers + 6, Math.floor(layout.rows * layout.columns.length * 0.45));
+    const allColumns = layout.groups.flat();
+    const minAvailable = Math.max(travellers + 8, Math.floor(layout.rows * allColumns.length * 0.45));
     const seatMap = [];
 
-    layout.columns.forEach((column, columnIndex) => {
+    allColumns.forEach((column, columnIndex) => {
+        const isWindow = columnIndex === 0 || columnIndex === allColumns.length - 1;
+        const isAisle = layout.groups.some((group, gi) => {
+            // Last column of a non-last group or first column of a non-first group
+            const lastInGroup = group[group.length - 1] === column && gi < layout.groups.length - 1;
+            const firstInGroup = group[0] === column && gi > 0;
+            return lastInGroup || firstInGroup;
+        });
+        const groupIndex = layout.groups.findIndex(g => g.includes(column));
+
         for (let rowOffset = 0; rowOffset < layout.rows; rowOffset++) {
             const rowNumber = layout.startRow + rowOffset;
-            const seatNumber = `${rowNumber}${column}`;
-            const isWindow = columnIndex === 0 || columnIndex === layout.columns.length - 1;
-            const isAisle = columnIndex === layout.splitIndex - 1 || columnIndex === layout.splitIndex;
+            const isPremiumRow = layout.premiumRows.includes(rowOffset);
             seatMap.push({
-                id: seatNumber,
+                id: `${rowNumber}${column}`,
                 row: rowNumber,
                 column,
-                status: Math.random() > 0.34 ? 'available' : 'occupied',
-                type: isWindow ? 'window' : isAisle ? 'aisle' : 'middle'
+                columnIndex,
+                groupIndex,
+                status: Math.random() > 0.33 ? 'available' : 'occupied',
+                type: isPremiumRow ? 'premium' : (isWindow ? (columnIndex === 0 ? 'window-left' : 'window-right') : isAisle ? 'aisle' : 'middle')
             });
         }
     });
@@ -903,8 +954,7 @@ function createSeatMap(cabinClass, travellers) {
     while (countAvailableSeats(seatMap) < minAvailable) {
         const occupiedSeats = seatMap.filter(seat => seat.status === 'occupied');
         if (!occupiedSeats.length) break;
-        const randomSeat = occupiedSeats[Math.floor(Math.random() * occupiedSeats.length)];
-        randomSeat.status = 'available';
+        occupiedSeats[Math.floor(Math.random() * occupiedSeats.length)].status = 'available';
     }
 
     return seatMap.sort((a, b) => {
@@ -927,6 +977,7 @@ function openSeatSelectionModal(flight, travellers) {
     seatSelectionState.flight = flight;
     seatSelectionState.travellers = travellers;
     seatSelectionState.selectedSeats = [];
+    seatSelectionState.totalWithFees = flight.price;
 
     renderSeatSelectionModal();
 
@@ -949,6 +1000,7 @@ function renderSeatSelectionModal() {
     if (!flight) return;
 
     const seatMapGrid = document.getElementById('seatMapGrid');
+    const seatColHeaders = document.getElementById('seatColHeaders');
     const seatFlightSummary = document.getElementById('seatFlightSummary');
     const availabilityCount = document.getElementById('seatAvailabilityCount');
     const neededCount = document.getElementById('seatNeededCount');
@@ -959,19 +1011,28 @@ function renderSeatSelectionModal() {
         return;
     }
 
+    const layout = getSeatLayout(flight.cabinClassKey);
     const freeSeats = countAvailableSeats(flight.seatMap);
     flight.freeSeats = freeSeats;
 
+    // --- Flight Summary ---
     seatFlightSummary.innerHTML = `
-        <h4>${flight.airline} ${flight.flightNumber}</h4>
-        <p>${flight.from} → ${flight.to}</p>
-        <p>${formatDate(flight.departureDate)} · ${flight.departureTime} - ${flight.arrivalTime}</p>
-        <p>${flight.cabinClass} · ${flight.stops}</p>
+        <h4>${flight.airline} &middot; ${flight.flightNumber}</h4>
+        <p>${flight.from} &rarr; ${flight.to}</p>
+        <p>${formatDate(flight.departureDate)} &middot; ${flight.departureTime} &ndash; ${flight.arrivalTime}</p>
+        <p>${flight.cabinClass} &middot; ${flight.stops}</p>
     `;
 
     availabilityCount.textContent = `${freeSeats} free`;
     neededCount.textContent = `${travellers} ${travellers === 1 ? 'seat' : 'seats'}`;
 
+    // --- Legend prices ---
+    const legendPriceStd = document.getElementById('legendPriceStd');
+    const legendPricePremium = document.getElementById('legendPricePremium');
+    if (legendPriceStd) legendPriceStd.textContent = layout.seatFeeStd > 0 ? `+$${layout.seatFeeStd}` : 'Free';
+    if (legendPricePremium) legendPricePremium.textContent = `+$${layout.seatFeePremium}`;
+
+    // --- Selected Seats Preview ---
     if (!selectedSeats.length) {
         selectedPreview.textContent = 'No seats selected yet';
     } else {
@@ -980,51 +1041,160 @@ function renderSeatSelectionModal() {
             .join('');
     }
 
+    // --- Booking Summary ---
+    updateBookingSummary(flight, travellers, selectedSeats, layout);
+
+    // --- Confirm Button ---
     confirmButton.disabled = selectedSeats.length !== travellers;
     confirmButton.textContent = selectedSeats.length === travellers
-        ? `Reserve ${selectedSeats.length} Seat${selectedSeats.length > 1 ? 's' : ''}`
-        : `Choose ${travellers - selectedSeats.length} More Seat${travellers - selectedSeats.length === 1 ? '' : 's'}`;
+        ? `Reserve ${selectedSeats.length} Seat${selectedSeats.length > 1 ? 's' : ''} &rarr;`
+        : `Select ${travellers - selectedSeats.length} More Seat${travellers - selectedSeats.length === 1 ? '' : 's'}`;
 
+    // --- Build seat map ---
     const rows = [...new Set(flight.seatMap.map(seat => seat.row))];
-    const layout = getSeatLayout(flight.cabinClassKey);
+    const allColumns = layout.groups.flat();
 
-    seatMapGrid.innerHTML = rows.map(row => {
-        const rowSeats = flight.seatMap.filter(seat => seat.row === row);
-        const leftSeats = rowSeats.slice(0, layout.splitIndex);
-        const rightSeats = rowSeats.slice(layout.splitIndex);
-
-        return `
-            <div class="seat-row">
-                <div class="row-label">${row}</div>
-                <div class="seat-block cols-${leftSeats.length}">
-                    ${leftSeats.map(renderSeatButton).join('')}
-                </div>
-                <div class="aisle-label">||</div>
-                <div class="seat-block cols-${rightSeats.length}">
-                    ${rightSeats.map(renderSeatButton).join('')}
-                </div>
+    // Column header row
+    if (seatColHeaders) {
+        const headerCols = buildRowGridStyle(layout);
+        seatColHeaders.innerHTML = `
+            <div class="seat-col-headers seat-row ${layout.cssLayout}" style="margin-bottom:4px;">
+                <div></div>
+                ${allColumns.map((col, i) => {
+                    // Insert aisle gap markers
+                    const colHtml = `<div class="seat-col-header">${col}</div>`;
+                    // Check if we need an aisle gap before this column
+                    const needsAisleBefore = layout.groups.some((g, gi) => gi > 0 && g[0] === col);
+                    return needsAisleBefore
+                        ? `<div class="aisle-gap"></div>${colHtml}`
+                        : colHtml;
+                }).join('')}
             </div>
         `;
+    }
+
+    // Determine if we need to add a section label for premium rows
+    const premiumRowNumbers = layout.premiumRows.map(offset => layout.startRow + offset);
+    let sectionLabelRendered = false;
+    let premiumSectionLabelRendered = false;
+
+    seatMapGrid.innerHTML = rows.map(rowNum => {
+        const rowSeats = flight.seatMap.filter(seat => seat.row === rowNum);
+        let labelHtml = '';
+
+        if (!premiumSectionLabelRendered && premiumRowNumbers.includes(rowNum)) {
+            premiumSectionLabelRendered = true;
+            labelHtml = `<div class="seat-section-label"><span class="seat-section-label-text">Exit / Premium Rows</span></div>`;
+        } else if (!sectionLabelRendered && !premiumRowNumbers.includes(rowNum) && premiumSectionLabelRendered) {
+            sectionLabelRendered = true;
+            labelHtml = `<div class="seat-section-label"><span class="seat-section-label-text">Standard Rows</span></div>`;
+        } else if (!sectionLabelRendered && rowNum === rows[0]) {
+            sectionLabelRendered = true;
+            const sectionName = { economy: 'Economy Class', premium: 'Premium Economy', business: 'Business Class', first: 'First Class' }[flight.cabinClassKey] || 'Economy Class';
+            labelHtml = `<div class="seat-section-label"><span class="seat-section-label-text">${sectionName}</span></div>`;
+        }
+
+        return `${labelHtml}${renderSeatRow(rowNum, rowSeats, layout)}`;
     }).join('');
 
-    seatMapGrid.querySelectorAll('.seat-btn').forEach(button => {
-        if (button.classList.contains('occupied')) return;
+    // Re-attach click listeners
+    seatMapGrid.querySelectorAll('.seat-btn:not([disabled])').forEach(button => {
         button.addEventListener('click', () => toggleSeatSelection(button.dataset.seatId));
     });
 }
 
+function buildRowGridStyle(layout) {
+    // Not needed for CSS grid, handled via layout class
+    return '';
+}
+
+function renderSeatRow(rowNum, rowSeats, layout) {
+    const seatsByCol = {};
+    rowSeats.forEach(s => { seatsByCol[s.column] = s; });
+
+    const allColumns = layout.groups.flat();
+    const cells = [];
+
+    // row label
+    cells.push(`<div class="row-label">${rowNum}</div>`);
+
+    allColumns.forEach((col, i) => {
+        const needsAisleBefore = layout.groups.some((g, gi) => gi > 0 && g[0] === col);
+        if (needsAisleBefore) {
+            cells.push(`<div class="aisle-gap"><div class="aisle-gap-inner"></div></div>`);
+        }
+
+        const seat = seatsByCol[col];
+        if (seat) {
+            cells.push(renderSeatButton(seat));
+        } else {
+            cells.push(`<div></div>`);
+        }
+    });
+
+    return `<div class="seat-row ${layout.cssLayout}" role="row">${cells.join('')}</div>`;
+}
+
+function updateBookingSummary(flight, travellers, selectedSeats, layout) {
+    const baseFareEl = document.getElementById('summaryBaseFare');
+    const seatFeeEl = document.getElementById('summarySeatFee');
+    const seatFeeRowEl = document.getElementById('summarySeatFeeRow');
+    const totalEl = document.getElementById('summaryTotal');
+
+    if (!baseFareEl || !seatFeeEl || !totalEl) return;
+
+    const baseTotal = flight.price;
+    baseFareEl.textContent = `$${baseTotal.toLocaleString()}`;
+
+    // Calculate seat fee for selected premium seats
+    let seatFeeTotal = 0;
+    selectedSeats.forEach(seatId => {
+        const seat = flight.seatMap.find(s => s.id === seatId);
+        if (seat) {
+            if (seat.type === 'premium') {
+                seatFeeTotal += layout.seatFeePremium;
+            } else {
+                seatFeeTotal += layout.seatFeeStd;
+            }
+        }
+    });
+
+    if (seatFeeTotal > 0) {
+        seatFeeEl.textContent = `+$${seatFeeTotal.toLocaleString()}`;
+        if (seatFeeRowEl) seatFeeRowEl.style.display = 'flex';
+    } else {
+        if (seatFeeRowEl) seatFeeRowEl.style.display = 'none';
+    }
+
+    const grandTotal = baseTotal + seatFeeTotal;
+    totalEl.textContent = `$${grandTotal.toLocaleString()}`;
+    seatSelectionState.totalWithFees = grandTotal;
+}
+
 function renderSeatButton(seat) {
     const isSelected = seatSelectionState.selectedSeats.includes(seat.id);
-    return `
-        <button
-            type="button"
-            class="seat-btn ${seat.status} ${seat.type} ${isSelected ? 'selected' : ''}"
-            data-seat-id="${seat.id}"
-            ${seat.status === 'occupied' ? 'disabled' : ''}
-        >
-            ${seat.id}
-        </button>
-    `;
+    const isOccupied = seat.status === 'occupied';
+    // Build class list — include type class for styling (window-left, window-right, aisle, middle, premium)
+    const classes = [
+        'seat-btn',
+        seat.status,   // 'available' or 'occupied'
+        seat.type,     // 'premium', 'window-left', 'window-right', 'aisle', 'middle'
+        isSelected ? 'selected' : ''
+    ].filter(Boolean).join(' ');
+
+    const layout = getSeatLayout(seatSelectionState.flight?.cabinClassKey || 'economy');
+    const feeLabel = seat.type === 'premium' && layout.seatFeePremium > 0
+        ? ` +$${layout.seatFeePremium}`
+        : (layout.seatFeeStd > 0 && !isOccupied ? ` +$${layout.seatFeeStd}` : '');
+
+    return `<button
+        type="button"
+        class="${classes}"
+        data-seat-id="${seat.id}"
+        aria-label="Seat ${seat.id}${isOccupied ? ', reserved' : ''}${isSelected ? ', selected' : ''}"
+        aria-pressed="${isSelected}"
+        ${isOccupied ? 'disabled aria-disabled="true"' : ''}
+    >${seat.id}</button>`;
 }
 
 function toggleSeatSelection(seatId) {
@@ -1053,7 +1223,7 @@ function toggleSeatSelection(seatId) {
 }
 
 function confirmSeatReservation() {
-    const { flight, selectedSeats, travellers } = seatSelectionState;
+    const { flight, selectedSeats, travellers, totalWithFees } = seatSelectionState;
     if (!flight) return;
 
     if (selectedSeats.length !== travellers) {
@@ -1069,6 +1239,8 @@ function confirmSeatReservation() {
     flight.freeSeats = countAvailableSeats(flight.seatMap);
     updateFlightSeatBadges(flight.id, flight.freeSeats);
     closeSeatSelectionModal();
+
+    const finalAmount = totalWithFees || flight.price;
 
     const bookingData = {
         type: 'flight',
@@ -1087,9 +1259,9 @@ function confirmSeatReservation() {
         travellers,
         tripType: currentTripType,
         refundable: flight.refundable,
-        price: `$${flight.price.toLocaleString()}`,
-        amount: flight.price,
-        pricePerPerson: flight.pricePerPerson,
+        price: `$${finalAmount.toLocaleString()}`,
+        amount: finalAmount,
+        pricePerPerson: Math.round(finalAmount / travellers),
         selectedSeats: [...selectedSeats],
         seatsReserved: true,
         freeSeatsRemaining: flight.freeSeats,
