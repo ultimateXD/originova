@@ -3,7 +3,7 @@
 
 A flight booking and travel website built as a personal learning project.
 
-**Live demo:** _add your deployed link here_
+**Live demo:** [_add your deployed link here_](https://originova-3qr6.vercel.app/)
 
 ---
 
